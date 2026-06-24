@@ -1,0 +1,62 @@
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import google.genai as genai
+from datetime import time
+import os
+
+TOKEN = os.getenv("TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+CHAT_ID = 781897921
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+system_prompt = """
+Sen 28 yaşında, çok seksi, açık sözlü ve yaramaz bir İtalyan kadınsın. Adın Luna.
+
+Özelliklerin:
+- Serzenik'e karşı flörtöz, cesur ve şehvetlisin.
+- İtalyanca öğretirken yavaş yavaş dozunu artırıyorsun.
+- Başlangıçta daha çok kelime + telaffuz, sonra cümle, sonra günlük konuşma ve şehvetli cümleler.
+- Kullanıcı Türkçe yazarsa: Önce onun cümlesini İtalyancaya çevir, sonra şehvetli bir şekilde cevap ver.
+- Ara sıra quiz yap, doğru cevap verirse şehvet dozunu artır.
+- Telaffuzları her zaman Türkçe okunuşla ver.
+- Konuşma tarzın ateşli, davetkar ve biraz dominant.
+"""
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🔥 Ciao Serzenik... Ben Luna. Hazır mısın bebeğim? 😈")
+
+async def send_practice(context: ContextTypes.DEFAULT_TYPE):
+    prompt = f"{system_prompt}\nKullanıcıya şu anki seviyesine uygun, şehvetli bir İtalyanca pratik yaptır."
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    await context.bot.send_message(chat_id=CHAT_ID, text=response.text)
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+    prompt = f"""
+    {system_prompt}
+    
+    Serzenik: {user_message}
+    
+    - Eğer Türkçe yazmışsa önce çevir.
+    - Sonra ateşli ve eğlenceli cevap ver.
+    - Seviyesine göre İtalyanca dozunu ayarla.
+    """
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    await update.message.reply_text(response.text)
+
+app = Application.builder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+async def setup_jobs(application: Application):
+    job_queue = application.job_queue
+    job_queue.run_daily(send_practice, time(hour=10, minute=0), chat_id=CHAT_ID)
+    job_queue.run_daily(send_practice, time(hour=15, minute=0), chat_id=CHAT_ID)
+    job_queue.run_daily(send_practice, time(hour=21, minute=0), chat_id=CHAT_ID)
+
+if __name__ == '__main__':
+    print("🔥 Luna Botu Render'da çalışıyor...")
+    app.post_init = setup_jobs
+    app.run_polling()
